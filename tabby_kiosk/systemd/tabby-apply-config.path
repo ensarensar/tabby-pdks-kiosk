@@ -1,0 +1,14 @@
+[Unit]
+Description=Tabby config degisimi izle (config.json)
+
+[Path]
+PathExists=/var/lib/tabby-kiosk/config.json
+PathChanged=/var/lib/tabby-kiosk/config.json
+PathModified=/var/lib/tabby-kiosk/config.json
+PathExists=/home/tabby/.config/tabby-kiosk/config.json
+PathChanged=/home/tabby/.config/tabby-kiosk/config.json
+PathModified=/home/tabby/.config/tabby-kiosk/config.json
+Unit=tabby-apply-config.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=Tabby klon sonrasi ilk acilis hazirligi
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target tabby-config-agent.service tabby-kiosk.service
+ConditionPathExists=/var/lib/tabby-kiosk/.ilk_acilis_bekliyor
+
+[Service]
+Type=oneshot
+Environment=TABBY_USER=tabby
+ExecStart=/home/tabby/tabby_kiosk/scripts/ilk_acilis.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

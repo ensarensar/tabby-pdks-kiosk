@@ -1,0 +1,6 @@
+[Unit]
+Description=Tabby cihaz otomatik reboot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/reboot

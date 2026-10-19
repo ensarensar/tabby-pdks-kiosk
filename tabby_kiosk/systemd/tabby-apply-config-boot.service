@@ -1,0 +1,16 @@
+[Unit]
+Description=Tabby config boot uygula (ag/MAC/NTP)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+Environment=TABBY_CONFIG_DIR=/home/tabby/.config/tabby-kiosk
+Environment=TABBY_CONFIG_FILE=/var/lib/tabby-kiosk/config.json
+Environment=TABBY_KALICI_CONFIG_FILE=/var/lib/tabby-kiosk/config.json
+ExecStart=/home/tabby/tabby_kiosk/scripts/apply_tabby_config.sh
+RemainAfterExit=yes
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

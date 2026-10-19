@@ -1,0 +1,26 @@
+[Unit]
+Description=Tabby Network Config Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/home/tabby/tabby_kiosk
+Environment=PYTHONUNBUFFERED=1
+Environment=TABBY_CONFIG_DIR=/home/tabby/.config/tabby-kiosk
+Environment=TABBY_CONFIG_FILE=/var/lib/tabby-kiosk/config.json
+Environment=TABBY_KALICI_CONFIG_FILE=/var/lib/tabby-kiosk/config.json
+Environment=TABBY_CONFIG_BACKUP_FILE=/home/tabby/.config/tabby-kiosk/config.json
+Environment=TABBY_APPLY_SCRIPT=/home/tabby/tabby_kiosk/scripts/apply_tabby_config.sh
+Environment=TABBY_CONFIG_AGENT_HOST=0.0.0.0
+Environment=TABBY_CONFIG_AGENT_PORT=8080
+ExecStart=/usr/bin/python3 /home/tabby/tabby_kiosk/config_agent.py
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

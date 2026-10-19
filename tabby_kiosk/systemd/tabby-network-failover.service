@@ -1,0 +1,15 @@
+[Unit]
+Description=Tabby ethernet-oncelikli ag failover
+After=network.target tabby-apply-config-boot.service
+Wants=network.target
+
+[Service]
+Type=oneshot
+Environment=TABBY_CONFIG_FILE=/var/lib/tabby-kiosk/config.json
+Environment=TABBY_ETH_BEKLEME_S=15
+ExecStart=/home/tabby/tabby_kiosk/scripts/tabby_network_failover.sh boot
+RemainAfterExit=yes
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target

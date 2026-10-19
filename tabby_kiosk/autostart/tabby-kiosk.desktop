@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Tabby Kiosk
+Comment=RFID/NFC kiosk tam ekran
+Exec=/home/tabby/tabby_kiosk/scripts/kiosk_baslat.sh
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true

@@ -1,0 +1,31 @@
+[Unit]
+Description=Tabby RFID/NFC kiosk (Tkinter tam ekran)
+# Kiosk ekrani ag baglantisindan bagimsiz acilmali (offline mod).
+After=graphical.target display-manager.service
+Wants=display-manager.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=tabby
+Group=tabby
+Environment=HOME=/home/tabby
+Environment=TABBY_CONFIG_DIR=/home/tabby/.config/tabby-kiosk
+Environment=TABBY_CONFIG_FILE=/var/lib/tabby-kiosk/config.json
+Environment=TABBY_KALICI_CONFIG_FILE=/var/lib/tabby-kiosk/config.json
+Environment=TABBY_REMOTE_RESTART_ENABLE=0
+Environment=TABBY_REMOTE_RESTART_HOST=0.0.0.0
+Environment=TABBY_REMOTE_RESTART_PORT=8081
+Environment=TABBY_NTP_WAIT_MAX_S=0
+WorkingDirectory=/home/tabby/tabby_kiosk
+# Betik DISPLAY ve XAUTHORITY ile X'i bekler
+ExecStart=/home/tabby/tabby_kiosk/scripts/kiosk_baslat.sh
+# RuntimeMaxSec KULLANILMAZ: 6h restart saha cihazlarinda beyaz/masaüstü flash yapardi.
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+# Sistem acilisinda grafik hedefi ile baslat (graphical-session yerine)
+WantedBy=graphical.target

@@ -1,0 +1,6 @@
+[Unit]
+Description=Tabby uzaktan reboot hedefi
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/reboot

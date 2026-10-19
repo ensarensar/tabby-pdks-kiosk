@@ -1,0 +1,22 @@
+[Unit]
+Description=Tabby kiosk WiFi/ag popup engelleyici
+After=graphical.target display-manager.service tabby-kiosk.service
+Wants=display-manager.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=tabby
+Group=tabby
+Environment=HOME=/home/tabby
+Environment=DISPLAY=:0
+Environment=TABBY_POPUP_BEKCI_INTERVAL_S=2
+WorkingDirectory=/home/tabby/tabby_kiosk
+ExecStart=/home/tabby/tabby_kiosk/scripts/kiosk_popup_bekci.sh
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical.target

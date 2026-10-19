@@ -1,0 +1,9 @@
+chromium 1:149.0.7827.114-1~deb13u1+rpt1
+chromium-common 1:149.0.7827.114-1~deb13u1+rpt1
+chromium-l10n 1:149.0.7827.114-1~deb13u1+rpt1
+chromium-sandbox 1:149.0.7827.114-1~deb13u1+rpt1
+python3-evdev 1.9.1-1
+python3-pil:arm64 11.1.0-5+deb13u4
+python3-tk:arm64 3.13.5-1
+rpi-chromium-mods 20260211
+xserver-xorg-video-fbdev 1:0.5.0-2+b2

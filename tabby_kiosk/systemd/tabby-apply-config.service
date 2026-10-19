@@ -1,0 +1,10 @@
+[Unit]
+Description=Tabby uzaktan config uygula
+
+[Service]
+Type=oneshot
+TimeoutStartSec=45
+Environment=TABBY_CONFIG_DIR=/home/tabby/.config/tabby-kiosk
+Environment=TABBY_CONFIG_FILE=/var/lib/tabby-kiosk/config.json
+Environment=TABBY_KALICI_CONFIG_FILE=/var/lib/tabby-kiosk/config.json
+ExecStart=/home/tabby/tabby_kiosk/scripts/apply_tabby_config.sh

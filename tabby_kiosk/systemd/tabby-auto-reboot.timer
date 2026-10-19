@@ -1,0 +1,11 @@
+[Unit]
+Description=Tabby cihaz 6 saatte bir reboot timer
+
+[Timer]
+OnBootSec=6h
+OnUnitActiveSec=6h
+Persistent=true
+Unit=tabby-auto-reboot.service
+
+[Install]
+WantedBy=timers.target

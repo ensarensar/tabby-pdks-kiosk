@@ -1,0 +1,18 @@
+[Unit]
+Description=Tabby ag failover izleme dongusu (eth oncelikli, wifi yedek)
+After=network-online.target tabby-apply-config-boot.service tabby-network-failover.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=TABBY_CONFIG_FILE=/var/lib/tabby-kiosk/config.json
+Environment=TABBY_ETH_BEKLEME_S=10
+Environment=TABBY_FAILOVER_ARALIK_S=4
+ExecStart=/home/tabby/tabby_kiosk/scripts/tabby_network_failover.sh watch
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

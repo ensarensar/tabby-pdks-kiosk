@@ -1,0 +1,13 @@
+{
+  "cihaz_adi": "Yeni Cihaz",
+  "servis_url": "https://10.85.1.83:8000/tabby-kiosk-kartokuma",
+  "heartbeat_url": "https://10.85.1.83:8000/api/pdks-cihazlari/tabby/heartbeat",
+  "bekleme_video_login_url": "https://10.85.1.83:8000/api/oturum/giris",
+  "heartbeat_aktif": true,
+  "reboot_after_apply": false,
+  "wifi_ssid": "TELETIP",
+  "wifi_hidden": true,
+  "ntp_server": "10.85.1.130",
+  "dns": "8.8.8.8",
+  "bekleme_video_baslama_saniye": 180
+}
