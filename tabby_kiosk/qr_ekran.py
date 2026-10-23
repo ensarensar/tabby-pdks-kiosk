@@ -84,7 +84,7 @@ def jeton_iste(
     return QrSonuc("ok", jeton=jeton, sonraki_s=yenileme_saniye(j.get("sureSaniye")))
 
 
-def qr_resmi(jeton: str, kenar_px: int):
+def qr_resmi(jeton: str, kenar_px: int, renk: str = "black"):
     """PIL Image. qrcode kutuphanesi yoksa None."""
     try:
         import qrcode
@@ -94,5 +94,7 @@ def qr_resmi(jeton: str, kenar_px: int):
     qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, border=2, box_size=4)
     qr.add_data(jeton)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-    return img.resize((kenar_px, kenar_px))
+    img = qr.make_image(fill_color=renk, back_color="white").convert("RGB")
+    from PIL import Image
+
+    return img.resize((kenar_px, kenar_px), Image.NEAREST)
