@@ -217,7 +217,7 @@ class KioskArayuz:
             (self.f_durum, 8), (self.f_bekleme_marka, 30), (self.f_bekleme_qr, 12),
         ):
             fnt.configure(size=max(7, int(round(taban * s))))
-        sol_w = int(w - self.qr_kenar() - 50 * s) if self._qr_gorunur else int(w - 30 * s)
+        sol_w = int(w - self.qr_kenar() - 95 * s) if self._qr_gorunur else int(w - 40 * s)
         for lbl in (self.istem, self.istem_alt):
             lbl.configure(wraplength=max(120, sol_w))
         if self._qr_jeton:
