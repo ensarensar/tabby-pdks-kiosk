@@ -587,6 +587,9 @@ def main() -> None:
 
             if bekleme_video.acik_mi():
                 return
+            # v1.5.1: periyodik tarama bekleme ekranini (QR + tabby) kapatmasin
+            if not aktif_hata_metni and uygulama.bekleme_modunda_mi():
+                return
             if aktif_hata_metni:
                 uygulama.merkez_hata_goster(aktif_hata_metni)
             else:
