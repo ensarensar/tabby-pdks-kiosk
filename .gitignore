@@ -2,3 +2,12 @@ __pycache__/
 *.pyc
 *.tar.gz
 .DS_Store
+
+# gizli/yerel
+.env
+*.env
+*.key
+*.pem
+dist/
+*.img
+*.zip
