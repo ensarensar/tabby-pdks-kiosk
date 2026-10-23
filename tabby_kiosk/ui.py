@@ -292,6 +292,8 @@ class KioskArayuz:
             if rozet:
                 self.rozet.configure(text=rozet, bg=rozet_renk)
                 self.rozet.pack(anchor=tk.W, pady=(0, 4), before=self.istem)
+            boy = max(7, int(round((21 if len(metin) <= 24 else 15 if len(metin) <= 60 else 12) * self._olcek)))
+            self.f_istem.configure(size=boy)
             self.istem.configure(text=metin, fg=renk)
             self.istem_alt.configure(text=alt)
             if yonler:
@@ -318,7 +320,17 @@ class KioskArayuz:
     def merkez_hata_goster(self, metin: str) -> None:
         self._goster(metin, rozet="UYARI", rozet_renk=SARI, renk=LACIVERT)
 
+    _KAYIT_RE = re.compile(
+        r"^\s*(?:Sn|Sayın|SAYIN)\s+(.+?)\s+(Giriş|Çıkış|GİRİŞ|ÇIKIŞ|Giris|Cikis)\s+Kayd[ıi]n[ıi]z\s+(\d{1,2}:\d{2})",
+        re.IGNORECASE,
+    )
+
     def sunucu_mesaji_goster(self, metin: str) -> None:
+        m = self._KAYIT_RE.match(metin or "")
+        if m:
+            yon = m.group(2).casefold()
+            self.islem_basarili_goster(m.group(1), m.group(3), yon.startswith("gi") or yon.startswith("gİ"))
+            return
         self._goster(metin, rozet="BİLGİ", rozet_renk=INDIGO)
 
     def uyari_metni(self, metin: str) -> None:
