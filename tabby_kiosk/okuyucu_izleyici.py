@@ -80,7 +80,7 @@ class OkuyucuIzleyici:
 
         aygitlar: List[GirisAygiti] = okuyucu_aygitlarini_listele()
         harita = _tus_haritasi()
-        LOG.info(
+        LOG.debug(
             "Okuyucu tarama: %s aygit bulundu: %s",
             len(aygitlar),
             [

@@ -10,6 +10,7 @@ import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
 import logging
+import logging.handlers
 import os
 import queue
 import socket
@@ -57,7 +58,11 @@ def _log_yapilandir() -> None:
     if log_dosyasi:
         try:
             os.makedirs(os.path.dirname(log_dosyasi), exist_ok=True)
-            handlers.append(logging.FileHandler(log_dosyasi, encoding="utf-8"))
+            handlers.append(
+                logging.handlers.RotatingFileHandler(
+                    log_dosyasi, maxBytes=10 * 1024 * 1024, backupCount=3, encoding="utf-8"
+                )
+            )
         except Exception:
             pass
     logging.basicConfig(
