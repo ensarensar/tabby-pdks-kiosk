@@ -123,7 +123,7 @@ class KioskArayuz:
 
         alt = tk.Frame(self.aktif, bg=LACIVERT_KOYU)
         alt.pack(side=tk.BOTTOM, fill=tk.X)
-        self.bilgi_etiket = tk.Label(alt, bg=LACIVERT_KOYU, fg=SOLUK, font=self.f_durum, anchor=tk.W)
+        self.bilgi_etiket = tk.Label(alt, bg=LACIVERT_KOYU, fg=BEYAZ, font=self.f_durum, anchor=tk.W, justify=tk.LEFT)
         self.bilgi_etiket.pack(side=tk.LEFT, padx=(10, 4), pady=3, fill=tk.X, expand=True)
         self._port_noktalari: dict[int, tuple[tk.Canvas, str]] = {}
         for port, ad in ((CIKIS_USB_PORT, "Çıkış"), (GIRIS_USB_PORT, "Giriş")):
@@ -242,7 +242,9 @@ class KioskArayuz:
     def _bilgi_dongusu(self) -> None:
         try:
             b = oku_ekran_bilgisi()
-            self.bilgi_etiket.configure(text="%s  ·  %s  ·  %s" % (b["cihaz_adi"], b["baglanti_metin"], b["ip"]))
+            self.bilgi_etiket.configure(
+                text="%s  ·  %s  ·  IP: %s\nMAC: %s" % (b["cihaz_adi"], b["baglanti_metin"], b["ip"], b["mac"])
+            )
         except Exception:
             pass
         self.kok.after(3000, self._bilgi_dongusu)
