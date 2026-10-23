@@ -4,6 +4,7 @@ Tabby cihaz heartbeat gonderimi.
 """
 from __future__ import annotations
 
+import cihaz_kimlik
 import json
 import logging
 import os
@@ -472,6 +473,7 @@ def _heartbeat_gonder(ayar: HeartbeatAyari) -> None:
     headers = {"Content-Type": "application/json"}
     if eth_mac:
         headers["X-Tabby-Device-Mac"] = eth_mac
+    cihaz_kimlik.basliklara_ekle(headers)
     req = urlrequest.Request(
         ayar.url,
         data=body,

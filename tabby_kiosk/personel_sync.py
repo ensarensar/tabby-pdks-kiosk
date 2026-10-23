@@ -2,6 +2,7 @@
 """Sunucudan personel senkronu ve kart kuyrugu flush."""
 from __future__ import annotations
 
+import cihaz_kimlik
 import json
 import logging
 from datetime import datetime
@@ -87,6 +88,7 @@ def _json_istek(
     if body is not None:
         headers["Content-Type"] = "application/json"
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    cihaz_kimlik.basliklara_ekle(headers)
     req = urlrequest.Request(url, data=data, headers=headers, method=method)
     try:
         with urlrequest.urlopen(req, timeout=timeout_s) as resp:

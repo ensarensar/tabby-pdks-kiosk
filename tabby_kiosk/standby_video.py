@@ -4,6 +4,7 @@ Kart okunmadiginda sunucudaki bekleme videosunu tam ekranda oynatir.
 """
 from __future__ import annotations
 
+import cihaz_kimlik
 import logging
 import json
 import os
@@ -165,11 +166,11 @@ class _VideoProxy:
                     hedef_url = hedef if self.path.startswith("/video") else hedef_origin + self.path
                     req = urlrequest.Request(
                         hedef_url,
-                        headers={
+                        headers=cihaz_kimlik.basliklara_ekle({
                             "Cookie": cerez,
                             "User-Agent": self.headers.get("User-Agent", "TabbyKiosk/1.0"),
                             "Accept": self.headers.get("Accept", "*/*"),
-                        },
+                        }),
                         method="HEAD" if head_only else "GET",
                     )
                     range_header = self.headers.get("Range")

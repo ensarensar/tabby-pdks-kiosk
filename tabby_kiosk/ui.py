@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 from datetime import datetime
 import tkinter as tk
 from tkinter import font as tkfont
@@ -472,6 +473,66 @@ class KioskArayuz:
                 )
         except tk.TclError:
             pass
+
+    # --- Kartini unutanlar icin QR (DEVICE_SPEC 5) -----------------------
+    def qr_paneli_baslat(self, taban_getir) -> None:
+        """taban_getir() -> 'https://sunucu:port'. QR 403/401'de gizli kalir."""
+        self._qr_taban_getir = taban_getir
+        self._qr_foto = None
+        self._qr_kutu = tk.Frame(self.kok, bg=RENK_BEYAZ, bd=0, highlightthickness=0)
+        self._qr_resim = tk.Label(self._qr_kutu, bg=RENK_BEYAZ, bd=0)
+        self._qr_resim.pack(padx=6, pady=(6, 2))
+        tk.Label(
+            self._qr_kutu,
+            text="Kartını mı unuttun?\nTabby ile QR okut",
+            bg=RENK_BEYAZ,
+            fg=RENK_METIN_KOYU,
+            font=(FONT_AILE, 9, "bold"),
+            justify=tk.CENTER,
+        ).pack(padx=6, pady=(0, 6))
+        self._qr_gorunur = False
+        self._qr_iste()
+
+    def _qr_kenar(self) -> int:
+        h = max(self.kok.winfo_height(), 240)
+        return max(96, min(220, int(h * 0.30)))
+
+    def _qr_iste(self) -> None:
+        def _isci() -> None:
+            import qr_ekran
+            try:
+                sonuc = qr_ekran.jeton_iste(self._qr_taban_getir() or "")
+            except Exception as e:  # pragma: no cover
+                sonuc = qr_ekran.QrSonuc("hata", sonraki_s=qr_ekran.HATA_TEKRAR_S, mesaj=str(e))
+            img = qr_ekran.qr_resmi(sonuc.jeton, self._qr_kenar()) if sonuc.durum == "ok" else None
+            try:
+                self.kok.after(0, lambda: self._qr_uygula(sonuc, img))
+            except Exception:
+                pass
+
+        threading.Thread(target=_isci, name="tabby-qr", daemon=True).start()
+
+    def _qr_uygula(self, sonuc, img) -> None:
+        if sonuc.durum == "ok" and img is not None:
+            from PIL import ImageTk
+            self._qr_foto = ImageTk.PhotoImage(img)  # eski cizim burada silinir
+            self._qr_resim.configure(image=self._qr_foto)
+            if not self._qr_gorunur:
+                self._qr_kutu.place(relx=1.0, rely=0.0, x=-12, y=12, anchor="ne")
+                self._qr_kutu.lift()
+                self._qr_gorunur = True
+        else:
+            if sonuc.mesaj:
+                LOG.info("QR gizli (%s): %s", sonuc.durum, sonuc.mesaj)
+            self._qr_gizle()
+        self.kok.after(int(sonuc.sonraki_s * 1000), self._qr_iste)
+
+    def _qr_gizle(self) -> None:
+        if getattr(self, "_qr_gorunur", False):
+            self._qr_kutu.place_forget()
+            self._qr_resim.configure(image="")
+            self._qr_foto = None
+            self._qr_gorunur = False
 
     def _saat_dongusu(self) -> None:
         try:

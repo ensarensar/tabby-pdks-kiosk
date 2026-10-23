@@ -255,6 +255,14 @@ def main() -> None:
         LOG.error("Tk baslatilamadi: %s", e)
         sys.exit(1)
 
+    if os.environ.get("TABBY_QR_EKRAN", "1") not in ("0", "false", "hayir"):
+        try:
+            from personel_sync import _servis_tabani
+
+            uygulama.qr_paneli_baslat(_servis_tabani)
+        except Exception as e:
+            LOG.warning("QR paneli baslatilamadi: %s", e)
+
     izleyici = OkuyucuIzleyici(sonuc_kuyrugu)
     udev_dur = threading.Event()
     mesaj_kilit_s = ISLEM_MESAJ_GOSTERIM_SANIYE
