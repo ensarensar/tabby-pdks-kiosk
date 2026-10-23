@@ -1,7 +1,26 @@
 # -*- coding: utf-8 -*-
 """
-Tkinter tam ekran kiosk: beyaz tasarim, sol ust tabby, merkez mesaj + tarih/saat,
-alt GIRIS / CIKIS panelleri.
+Tabby kiosk ekrani (v1.5.0 tasarim).
+
+Referans 480x320; daha buyuk ekranlarda orantili buyur.
+
+  +--------------------------------------------------+
+  | tabby                               09:25        |  ust bant
+  |                                23.10.2026 Cuma   |
+  |--------------------------------------------------|
+  |  KARTINIZI OKUTUN               +-----------+    |
+  |  alt metin                      |    QR     |    |  govde
+  |  [<- GIRIS] [CIKIS ->]          | caption   |    |
+  |                                 +-----------+    |
+  |--------------------------------------------------|
+  | cihaz . ag . ip                  o Giris o Cikis |  durum satiri
+  +--------------------------------------------------+
+
+Bekleme modu: yalniz tabby + buyuk QR + kisa yazi.
+Genel API (main.py): hazir_ekrana_gec, islem_bekleniyor_goster,
+islem_basarili_goster, merkez_hata_goster, sunucu_mesaji_goster,
+son_okumayi_guncelle, uyari_metni, bagli_okuyuculari_guncelle,
+qr_paneli_baslat, bekleme_moduna_gec, bekleme_modundan_cik.
 """
 from __future__ import annotations
 
@@ -12,63 +31,17 @@ import threading
 from datetime import datetime
 import tkinter as tk
 from tkinter import font as tkfont
-from typing import Any, Iterable, List, Optional
+from typing import Any, Iterable, Optional
 
 from config import (
-    BOOTSTRAP_DANGER,
-    BOOTSTRAP_PRIMARY,
     CIKIS_USB_PORT,
     FONT_AILE,
-    FONT_ALT_KART,
-    FONT_ANA_BUYUK,
-    FONT_DURUM,
-    FONT_GUN,
-    FONT_KART,
-    FONT_MARKA,
-    FONT_ORTA_OKUYUCU,
-    FONT_SAAT,
-    FONT_TARIH,
     GELISTIRME_ESCAPE_CIKIS,
     GIRIS_USB_PORT,
-    KIOSK_ALT_GRADYAN_H,
-    KIOSK_ALT_PADX,
-    KIOSK_ALT_PADY,
-    KIOSK_BASLIK_PADY1,
-    KIOSK_BASLIK_PADY2,
-    KIOSK_DIS_PADX,
-    KIOSK_DIS_PADY,
-    KIOSK_FONT_CARPAN,
     KIOSK_IMLEC_GIZLE,
-    KIOSK_PANEL_CANVAS_H,
-    KIOSK_PANEL_GAP,
     KIOSK_PENCERE_USTTE,
-    KIOSK_REF_GENISLIK,
-    KIOSK_REF_YUKSEKLIK,
-    KIOSK_UST_PADY_ALT,
-    LOGO_PANEL_MAX_H,
-    LOGO_PANEL_MAX_W,
-    LOGO_TABBY_MAX_H,
-    LOGO_TABBY_MAX_W,
-    METIN_ANA_SATIR1,
-    METIN_ANA_SATIR2,
-    METIN_BEKLEYINIZ,
-    METIN_CIKIS,
-    METIN_GIRIS,
-    METIN_HAZIR,
     METIN_KART_ETIKET,
     METIN_OKUYUCU_ETIKET,
-    METIN_SON_OKUMA,
-    RENK_ARKA,
-    RENK_ARKA_UST,
-    RENK_BEYAZ,
-    RENK_CIKIS_KIRMIZI,
-    RENK_GIRIS_YESIL,
-    RENK_METIN_KOYU,
-    RENK_UYARI,
-    RENK_VURGULU,
-    RESIM_CIKIS_LOGO,
-    RESIM_GIRIS_LOGO,
-    RESIM_TABBY_LOGO,
     SON_OKUMA_GOSTERIM_SANIYE,
     TAM_EKRAN,
     TURKCE_GUNLER,
@@ -78,502 +51,268 @@ from device_info import oku_ekran_bilgisi
 LOG = logging.getLogger(__name__)
 
 
+def _renk(ad: str, varsayilan: str) -> str:
+    v = os.environ.get(ad, "").strip()
+    return v if re.fullmatch(r"#[0-9a-fA-F]{6}", v or "") else varsayilan
+
+
+# Tabby kurumsal palet
+LACIVERT = _renk("TABBY_UI_LACIVERT", "#00096b")
+LACIVERT_KOYU = _renk("TABBY_UI_LACIVERT_KOYU", "#00054a")
+INDIGO = _renk("TABBY_UI_INDIGO", "#2b36a8")
+BEYAZ = "#ffffff"
+SOLUK = "#b9bfe8"
+KIRMIZI_B = "#fd3550"
+YESIL = "#16a34a"
+KIRMIZI = "#dc2626"
+SARI = "#f59e0b"
+
+METIN_ISTEM = "Kartınızı okutun"
+METIN_ISTEM_ALT = "Girişte soldaki, çıkışta sağdaki okuyucuyu kullanın"
+METIN_QR = "Kartını mı unuttun?\nTabby ile okut"
+METIN_QR_BEKLEME = "Kartını mı unuttun? QR okut"
+REF_W, REF_H = 480.0, 320.0
+
+
 class KioskArayuz:
     def __init__(self, kok: tk.Tk) -> None:
-        self._resim_tutucular: List[Any] = []
         self.kok = kok
         self.kok.title("Tabby Kiosk")
-        self.kok.configure(bg=RENK_ARKA)
-
+        self.kok.configure(bg=LACIVERT)
         if TAM_EKRAN:
             self.kok.attributes("-fullscreen", True)
         self.kok.attributes("-topmost", KIOSK_PENCERE_USTTE)
-
-        self.kok.bind("<Configure>", self._boyut_degisti)
-        self._son_genislik = 0
-        self._son_yukseklik = 0
-        self._son_okuma_after_id: Optional[Any] = None
-        self._saat_zamanlayici: Optional[str] = None
-        self._alt_bilgi_after_id: Optional[Any] = None
-
         if GELISTIRME_ESCAPE_CIKIS:
             self.kok.bind("<Escape>", lambda e: self.kok.quit())
 
-        ana = tk.Frame(self.kok, bg=RENK_ARKA)
-        ana.pack(
-            fill=tk.BOTH,
-            expand=True,
-            padx=KIOSK_DIS_PADX,
-            pady=(KIOSK_DIS_PADY, 0),
-        )
-        self._ana = ana
-        self._alt_bolum_bg = RENK_ARKA
+        self._olcek = 1.0
+        self._son_boyut = (0, 0)
+        self._son_okuma_after_id: Optional[Any] = None
+        self._bekleme = False
+        self._qr_jeton = ""
+        self._qr_foto = None
+        self._qr_bekleme_foto = None
+        self._qr_gorunur = False
+        self._qr_taban_getir = None
+        self._bagli_portlar: set[int] = set()
 
-        self.durum_strip = tk.Frame(ana, bg=self._alt_bolum_bg)
-        self.durum_strip.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 0))
+        f = FONT_AILE
+        self.f_marka = tkfont.Font(family=f, size=22, weight="bold")
+        self.f_saat = tkfont.Font(family=f, size=20, weight="bold")
+        self.f_tarih = tkfont.Font(family=f, size=9)
+        self.f_istem = tkfont.Font(family=f, size=21, weight="bold")
+        self.f_alt = tkfont.Font(family=f, size=9)
+        self.f_rozet = tkfont.Font(family=f, size=10, weight="bold")
+        self.f_yon = tkfont.Font(family=f, size=13, weight="bold")
+        self.f_qr = tkfont.Font(family=f, size=9, weight="bold")
+        self.f_durum = tkfont.Font(family=f, size=8)
+        self.f_bekleme_marka = tkfont.Font(family=f, size=30, weight="bold")
+        self.f_bekleme_qr = tkfont.Font(family=f, size=12, weight="bold")
 
-        alt_iki = tk.Frame(ana, bg=self._alt_bolum_bg)
-        alt_iki.pack(
-            side=tk.BOTTOM,
-            fill=tk.X,
-            pady=(0, 0),
-        )
-        alt_iki._sabit_arka_plan = True  # type: ignore[attr-defined]
-        alt_iki.columnconfigure(0, weight=1)
-        alt_iki.columnconfigure(1, weight=0)
-        alt_iki.columnconfigure(2, weight=1)
-        _yarim_gap = max(2, KIOSK_PANEL_GAP // 2)
+        # ---------- aktif ekran ----------
+        self.aktif = tk.Frame(kok, bg=LACIVERT)
+        ust = tk.Frame(self.aktif, bg=LACIVERT_KOYU)
+        ust.pack(side=tk.TOP, fill=tk.X)
+        self._marka(ust, self.f_marka, LACIVERT_KOYU).pack(side=tk.LEFT, padx=(12, 0), pady=4)
+        saat_kutu = tk.Frame(ust, bg=LACIVERT_KOYU)
+        saat_kutu.pack(side=tk.RIGHT, padx=(0, 12), pady=2)
+        self.saat_etiket = tk.Label(saat_kutu, bg=LACIVERT_KOYU, fg=BEYAZ, font=self.f_saat)
+        self.saat_etiket.pack(anchor=tk.E)
+        self.tarih_etiket = tk.Label(saat_kutu, bg=LACIVERT_KOYU, fg=SOLUK, font=self.f_tarih)
+        self.tarih_etiket.pack(anchor=tk.E)
 
-        self._alt_gradyan = tk.Canvas(
-            ana,
-            height=KIOSK_ALT_GRADYAN_H,
-            bg=RENK_ARKA,
-            highlightthickness=0,
-            bd=0,
-        )
-        self._alt_gradyan.pack(side=tk.BOTTOM, fill=tk.X)
-        self._alt_gradyan.bind("<Configure>", self._alt_gradyan_ciz)
+        alt = tk.Frame(self.aktif, bg=LACIVERT_KOYU)
+        alt.pack(side=tk.BOTTOM, fill=tk.X)
+        self.bilgi_etiket = tk.Label(alt, bg=LACIVERT_KOYU, fg=SOLUK, font=self.f_durum, anchor=tk.W)
+        self.bilgi_etiket.pack(side=tk.LEFT, padx=(10, 4), pady=3, fill=tk.X, expand=True)
+        self._port_noktalari: dict[int, tuple[tk.Canvas, str]] = {}
+        for port, ad in ((CIKIS_USB_PORT, "Çıkış"), (GIRIS_USB_PORT, "Giriş")):
+            tk.Label(alt, text=ad, bg=LACIVERT_KOYU, fg=SOLUK, font=self.f_durum).pack(side=tk.RIGHT, padx=(2, 10))
+            cv = tk.Canvas(alt, width=10, height=10, bg=LACIVERT_KOYU, highlightthickness=0, bd=0)
+            cv.pack(side=tk.RIGHT)
+            self._port_noktalari[port] = (cv, ad)
 
-        sol_panel = tk.Frame(alt_iki, bg=self._alt_bolum_bg)
-        sol_panel.grid(row=0, column=0, sticky="nsew", padx=(0, _yarim_gap))
-        sol_panel._sabit_arka_plan = True  # type: ignore[attr-defined]
-        orta_panel = tk.Frame(alt_iki, bg=self._alt_bolum_bg)
-        orta_panel.grid(row=0, column=1, sticky="nsew", padx=(4, 4))
-        orta_panel._sabit_arka_plan = True  # type: ignore[attr-defined]
-        sag_panel = tk.Frame(alt_iki, bg=self._alt_bolum_bg)
-        sag_panel.grid(row=0, column=2, sticky="nsew", padx=(_yarim_gap, 0))
-        sag_panel._sabit_arka_plan = True  # type: ignore[attr-defined]
+        govde = tk.Frame(self.aktif, bg=LACIVERT)
+        govde.pack(fill=tk.BOTH, expand=True)
+        govde.columnconfigure(0, weight=1)
+        govde.columnconfigure(1, weight=0)
+        govde.rowconfigure(0, weight=1)
 
-        self._son_alt_bilgi_metin = self._cihaz_bilgi_metni()
-        self._alt_bilgi_etiket = tk.Label(
-            orta_panel,
-            text=self._son_alt_bilgi_metin,
-            bg=self._alt_bolum_bg,
-            fg=RENK_METIN_KOYU,
-            justify=tk.CENTER,
-            anchor=tk.CENTER,
-            font=(FONT_AILE, max(7, FONT_DURUM)),
-        )
-        self._alt_bilgi_etiket.pack(fill=tk.BOTH, expand=True, padx=(2, 2), pady=(2, 2))
+        self.sol = tk.Frame(govde, bg=LACIVERT)
+        self.sol.grid(row=0, column=0, sticky="nsew", padx=(14, 8), pady=(8, 8))
+        ic = tk.Frame(self.sol, bg=LACIVERT)
+        ic.place(relx=0.0, rely=0.5, anchor="w", relwidth=1.0)
+        self.rozet = tk.Label(ic, bg=INDIGO, fg=BEYAZ, font=self.f_rozet, padx=8, pady=1)
+        self.istem = tk.Label(ic, text=METIN_ISTEM, bg=LACIVERT, fg=BEYAZ, font=self.f_istem,
+                              justify=tk.LEFT, anchor=tk.W)
+        self.istem.pack(fill=tk.X, anchor=tk.W)
+        self.istem_alt = tk.Label(ic, text=METIN_ISTEM_ALT, bg=LACIVERT, fg=SOLUK, font=self.f_alt,
+                                  justify=tk.LEFT, anchor=tk.W)
+        self.istem_alt.pack(fill=tk.X, anchor=tk.W, pady=(2, 8))
+        self.yonler = tk.Frame(ic, bg=LACIVERT)
+        self.yonler.pack(fill=tk.X, anchor=tk.W)
+        self._yon(self.yonler, "←  GİRİŞ", YESIL).pack(side=tk.LEFT, padx=(0, 6))
+        self._yon(self.yonler, "ÇIKIŞ  →", KIRMIZI).pack(side=tk.LEFT)
+        self._ic = ic
 
-        img_giris = self._resim_yukle(
-            RESIM_GIRIS_LOGO, LOGO_PANEL_MAX_W, LOGO_PANEL_MAX_H
-        )
-        img_cikis = self._resim_yukle(
-            RESIM_CIKIS_LOGO, LOGO_PANEL_MAX_W, LOGO_PANEL_MAX_H
-        )
-        if img_giris:
-            tk.Label(
-                sol_panel,
-                image=img_giris,
-                bg=self._alt_bolum_bg,
-                anchor=tk.W,
-                justify=tk.LEFT,
-            ).pack(fill=tk.BOTH, expand=True)
-        else:
-            self._panel_resim_yedek(sol_panel, True)
-        if img_cikis:
-            tk.Label(
-                sag_panel,
-                image=img_cikis,
-                bg=self._alt_bolum_bg,
-                anchor=tk.E,
-                justify=tk.RIGHT,
-            ).pack(fill=tk.BOTH, expand=True)
-        else:
-            self._panel_resim_yedek(sag_panel, False)
+        self.qr_kart = tk.Frame(govde, bg=BEYAZ)
+        self.qr_resim = tk.Label(self.qr_kart, bg=BEYAZ, bd=0)
+        self.qr_resim.pack(padx=6, pady=(6, 2))
+        self.qr_yazi = tk.Label(self.qr_kart, text=METIN_QR, bg=BEYAZ, fg=LACIVERT,
+                                font=self.f_qr, justify=tk.CENTER)
+        self.qr_yazi.pack(padx=6, pady=(0, 6))
 
-        ust = tk.Frame(ana, bg=RENK_ARKA)
-        ust.pack(
-            side=tk.TOP,
-            fill=tk.X,
-            anchor=tk.NW,
-            pady=(0, KIOSK_UST_PADY_ALT),
-        )
+        # ---------- bekleme ekrani ----------
+        self.bekleme = tk.Frame(kok, bg=LACIVERT)
+        bic = tk.Frame(self.bekleme, bg=LACIVERT)
+        bic.place(relx=0.5, rely=0.5, anchor="center")
+        self._marka(bic, self.f_bekleme_marka, LACIVERT).pack(pady=(0, 6))
+        self.b_qr_kutu = tk.Frame(bic, bg=BEYAZ)
+        self.b_qr_resim = tk.Label(self.b_qr_kutu, bg=BEYAZ, bd=0)
+        self.b_qr_resim.pack(padx=8, pady=8)
+        self.b_qr_kutu.pack()
+        self.b_yazi = tk.Label(bic, text=METIN_QR_BEKLEME, bg=LACIVERT, fg=BEYAZ, font=self.f_bekleme_qr)
+        self.b_yazi.pack(pady=(6, 0))
+        self.b_istem = tk.Label(bic, text=METIN_ISTEM, bg=LACIVERT, fg=BEYAZ, font=self.f_bekleme_qr)
 
-        merkez = tk.Frame(ana, bg=RENK_ARKA)
-        merkez.pack(fill=tk.BOTH, expand=True)
-
-        img_tabby = self._resim_yukle(
-            RESIM_TABBY_LOGO, LOGO_TABBY_MAX_W, LOGO_TABBY_MAX_H
-        )
-        if img_tabby:
-            tk.Label(ust, image=img_tabby, bg=RENK_ARKA).pack(anchor=tk.W)
-        else:
-            self._tabby_metin_yedek(ust)
-
-        self._baslik_font = tkfont.Font(
-            family=FONT_AILE, size=FONT_ANA_BUYUK, weight="bold"
-        )
-        self._tarih_font = tkfont.Font(family=FONT_AILE, size=FONT_TARIH)
-        self._gun_font = tkfont.Font(family=FONT_AILE, size=FONT_GUN)
-        self._saat_font = tkfont.Font(family=FONT_AILE, size=FONT_SAAT, weight="bold")
-        self._orta_okuyucu_font = tkfont.Font(
-            family=FONT_AILE, size=FONT_ORTA_OKUYUCU, weight="bold"
-        )
-        self._kart_font = tkfont.Font(family=FONT_AILE, size=FONT_KART, weight="bold")
-        self._alt_kart_font = tkfont.Font(
-            family=FONT_AILE, size=FONT_ALT_KART, weight="bold"
-        )
-        self._durum_font = tkfont.Font(family=FONT_AILE, size=FONT_DURUM)
-        self._alt_bilgi_font = tkfont.Font(
-            family=FONT_AILE, size=max(7, FONT_DURUM), weight="normal"
-        )
-        self._alt_bilgi_etiket.configure(font=self._alt_bilgi_font)
-
-        self.baslik_etiket = tk.Label(
-            merkez,
-            text=METIN_HAZIR,
-            bg=RENK_ARKA,
-            fg=RENK_METIN_KOYU,
-            font=self._baslik_font,
-            justify=tk.CENTER,
-            anchor=tk.CENTER,
-        )
-        self.baslik_etiket.pack(
-            fill=tk.X,
-            padx=(2, 2),
-            pady=(KIOSK_BASLIK_PADY1, KIOSK_BASLIK_PADY2),
-        )
-
-        self.tarih_saat_kutu = tk.Frame(merkez, bg=RENK_ARKA)
-        self.tarih_saat_kutu.pack(fill=tk.X)
-        self.tarih_etiket = tk.Label(
-            self.tarih_saat_kutu,
-            text="",
-            bg=RENK_ARKA,
-            fg=RENK_METIN_KOYU,
-            font=self._tarih_font,
-            justify=tk.CENTER,
-            anchor=tk.CENTER,
-        )
-        self.tarih_etiket.pack(fill=tk.X)
-        self.gun_etiket = tk.Label(
-            self.tarih_saat_kutu,
-            text="",
-            bg=RENK_ARKA,
-            fg=RENK_METIN_KOYU,
-            font=self._gun_font,
-            justify=tk.CENTER,
-            anchor=tk.CENTER,
-        )
-        self.gun_etiket.pack(fill=tk.X, pady=(2, 2))
-        self.saat_etiket = tk.Label(
-            self.tarih_saat_kutu,
-            text="",
-            bg=RENK_ARKA,
-            fg=RENK_METIN_KOYU,
-            font=self._saat_font,
-            justify=tk.CENTER,
-            anchor=tk.CENTER,
-        )
-        self.saat_etiket.pack(fill=tk.X)
-
-        self.orta_okuyucu_etiket = tk.Label(
-            merkez,
-            text="",
-            bg=RENK_ARKA,
-            fg=BOOTSTRAP_PRIMARY,
-            font=self._orta_okuyucu_font,
-            justify=tk.CENTER,
-            anchor=tk.CENTER,
-        )
-        self.kart_etiket = tk.Label(
-            merkez,
-            text="",
-            bg=RENK_ARKA,
-            fg=BOOTSTRAP_PRIMARY,
-            font=self._kart_font,
-            justify=tk.CENTER,
-            anchor=tk.CENTER,
-        )
-
-        self.bagli_etiket = tk.Frame(self.durum_strip, bg=self._alt_bolum_bg)
-        self.bagli_etiket.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 0))
-        self._usb_durum_gostergesi_olustur()
-
-        self.son_okuyucu_etiket = tk.Label(
-            self.durum_strip,
-            text="",
-            bg=self._alt_bolum_bg,
-            fg=RENK_METIN_KOYU,
-            font=self._durum_font,
-            anchor=tk.W,
-            justify=tk.LEFT,
-        )
-
-        self.son_kart_etiket = tk.Label(
-            self.durum_strip,
-            text="",
-            bg=self._alt_bolum_bg,
-            fg=RENK_METIN_KOYU,
-            font=self._alt_kart_font,
-            anchor=tk.W,
-            justify=tk.LEFT,
-        )
-
+        self.aktif.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self.kok.bind("<Configure>", self._boyut_degisti)
         if KIOSK_IMLEC_GIZLE:
             self._imlec_gizle(self.kok)
-
-        self._alt_bilgi_yenile_dongusu()
+        self._port_ciz()
         self._saat_dongusu()
+        self._bilgi_dongusu()
         self.hazir_ekrana_gec()
 
-    def _resim_yukle(
-        self, yol: str, max_w: int, max_h: int
-    ) -> Optional[tk.PhotoImage]:
-        if not os.path.isfile(yol):
-            LOG.warning("Resim bulunamadi: %s", yol)
-            return None
-        try:
-            from PIL import Image, ImageTk
-
-            im = Image.open(yol)
-            if im.mode not in ("RGB", "RGBA"):
-                im = im.convert("RGBA")
-            try:
-                resample = Image.Resampling.LANCZOS
-            except AttributeError:
-                resample = Image.LANCZOS  # type: ignore[attr-defined]
-            im.thumbnail((max_w, max_h), resample)
-            photo = ImageTk.PhotoImage(im)
-            self._resim_tutucular.append(photo)
-            return photo
-        except ImportError:
-            LOG.debug("Pillow yok, Tk PhotoImage deneniyor")
-        except Exception as e:
-            LOG.warning("Pillow ile acilamadi %s: %s", yol, e)
-        try:
-            img = tk.PhotoImage(file=yol)
-            ow = img.width()
-            oh = img.height()
-            if ow > max_w or oh > max_h:
-                fx = max(1, (ow + max_w - 1) // max_w)
-                fy = max(1, (oh + max_h - 1) // max_h)
-                f = max(fx, fy)
-                img = img.subsample(f, f)
-            self._resim_tutucular.append(img)
-            return img
-        except tk.TclError as e:
-            LOG.warning("Tk resim: %s", e)
-            return None
-
-    def _tabby_metin_yedek(self, ust: tk.Frame) -> None:
-        self._marka_font = tkfont.Font(
-            family=FONT_AILE, size=FONT_MARKA, weight="normal"
-        )
-        kutu = tk.Frame(ust, bg=RENK_ARKA)
-        kutu.pack(anchor=tk.W)
-        tk.Label(
-            kutu, text="tab", font=self._marka_font, fg=BOOTSTRAP_PRIMARY, bg=RENK_ARKA
-        ).pack(side=tk.LEFT)
-        tk.Label(
-            kutu, text="b", font=self._marka_font, fg=BOOTSTRAP_DANGER, bg=RENK_ARKA
-        ).pack(side=tk.LEFT)
-        tk.Label(
-            kutu, text="y", font=self._marka_font, fg=BOOTSTRAP_PRIMARY, bg=RENK_ARKA
-        ).pack(side=tk.LEFT)
-
-    def _panel_resim_yedek(self, panel: tk.Frame, sola: bool) -> None:
-        renk = self._alt_bolum_bg
-        cv = tk.Canvas(
-            panel,
-            height=KIOSK_PANEL_CANVAS_H,
-            bg=renk,
-            highlightthickness=1,
-            highlightbackground=RENK_ARKA,
-        )
-        cv.pack(fill=tk.BOTH, expand=True)
-        cv.bind(
-            "<Configure>",
-            lambda e, c=cv, s=sola: KioskArayuz._ikon_ciz_yedek(c, s),
-        )
-
+    # ---------- yardimcilar ----------
     @staticmethod
-    def _hex_renk_coz(hex_renk: str) -> tuple[int, int, int]:
-        renk = (hex_renk or "").strip().lstrip("#")
-        if len(renk) != 6:
-            return (11, 31, 58)
-        try:
-            return (int(renk[0:2], 16), int(renk[2:4], 16), int(renk[4:6], 16))
-        except ValueError:
-            return (11, 31, 58)
+    def _marka(ust: tk.Misc, font: tkfont.Font, bg: str) -> tk.Frame:
+        kutu = tk.Frame(ust, bg=bg)
+        for parca, renk in (("tab", BEYAZ), ("b", KIRMIZI_B), ("y", BEYAZ)):
+            tk.Label(kutu, text=parca, font=font, fg=renk, bg=bg, bd=0, padx=0).pack(side=tk.LEFT)
+        return kutu
 
-    @staticmethod
-    def _hex_renk_yap(r: int, g: int, b: int) -> str:
-        rr = max(0, min(255, int(r)))
-        gg = max(0, min(255, int(g)))
-        bb = max(0, min(255, int(b)))
-        return "#%02x%02x%02x" % (rr, gg, bb)
-
-    def _alt_gradyan_ciz(self, _evt=None) -> None:
-        try:
-            w = max(self._alt_gradyan.winfo_width(), 1)
-            h = max(self._alt_gradyan.winfo_height(), 1)
-            ust = self._hex_renk_coz(RENK_ARKA)
-            parlama = self._hex_renk_coz(RENK_BEYAZ)
-            self._alt_gradyan.delete("all")
-            for y in range(h):
-                uzaklik = abs((y / max(h - 1, 1)) - 0.5) * 2
-                oran = max(0.0, 1.0 - uzaklik)
-                r = ust[0] + (parlama[0] - ust[0]) * oran
-                g = ust[1] + (parlama[1] - ust[1]) * oran
-                b = ust[2] + (parlama[2] - ust[2]) * oran
-                self._alt_gradyan.create_line(
-                    0, y, w, y, fill=self._hex_renk_yap(r, g, b)
-                )
-        except tk.TclError:
-            pass
-
-    def _gradyan_renk(self, y: int, toplam_h: int) -> str:
-        return RENK_ARKA_UST
-
-    def _gradyan_uygula(self) -> None:
-        return
-
-    @staticmethod
-    def _ikon_ciz_yedek(cv: tk.Canvas, sola_ok: bool) -> None:
-        try:
-            cv.update_idletasks()
-            w = max(cv.winfo_width(), 80)
-            h = max(cv.winfo_height(), 80)
-            cv.delete("all")
-            renk = RENK_ARKA
-            cv.create_rectangle(0, 0, w, h, outline="", fill=renk)
-            mx = max(2, int(h * 0.03))
-            y_ok = h * 0.18
-            ok_uz = w * 0.2
-            if sola_ok:
-                cv.create_polygon(
-                    mx,
-                    y_ok,
-                    mx + ok_uz,
-                    y_ok - h * 0.07,
-                    mx + ok_uz,
-                    y_ok + h * 0.07,
-                    fill=RENK_METIN_KOYU,
-                    outline="",
-                )
-                cv.create_line(
-                    mx + ok_uz, y_ok, w - mx, y_ok, fill=RENK_METIN_KOYU, width=mx
-                )
-            else:
-                cv.create_line(
-                    mx, y_ok, w - mx - ok_uz, y_ok, fill=RENK_METIN_KOYU, width=mx
-                )
-                cv.create_polygon(
-                    w - mx,
-                    y_ok,
-                    w - mx - ok_uz,
-                    y_ok - h * 0.07,
-                    w - mx - ok_uz,
-                    y_ok + h * 0.07,
-                    fill=RENK_METIN_KOYU,
-                    outline="",
-                )
-        except tk.TclError:
-            pass
-
-    # --- Kartini unutanlar icin QR (DEVICE_SPEC 5) -----------------------
-    def qr_paneli_baslat(self, taban_getir) -> None:
-        """taban_getir() -> 'https://sunucu:port'. QR 403/401'de gizli kalir."""
-        self._qr_taban_getir = taban_getir
-        self._qr_foto = None
-        self._qr_kutu = tk.Frame(self.kok, bg=RENK_BEYAZ, bd=0, highlightthickness=0)
-        self._qr_resim = tk.Label(self._qr_kutu, bg=RENK_BEYAZ, bd=0)
-        self._qr_resim.pack(padx=6, pady=(6, 2))
-        tk.Label(
-            self._qr_kutu,
-            text="Kartını mı unuttun?\nTabby ile QR okut",
-            bg=RENK_BEYAZ,
-            fg=RENK_METIN_KOYU,
-            font=(FONT_AILE, 9, "bold"),
-            justify=tk.CENTER,
-        ).pack(padx=6, pady=(0, 6))
-        self._qr_gorunur = False
-        self._qr_iste()
-
-    def _qr_kenar(self) -> int:
-        h = max(self.kok.winfo_height(), 240)
-        return max(96, min(220, int(h * 0.30)))
-
-    def _qr_iste(self) -> None:
-        def _isci() -> None:
-            import qr_ekran
-            try:
-                sonuc = qr_ekran.jeton_iste(self._qr_taban_getir() or "")
-            except Exception as e:  # pragma: no cover
-                sonuc = qr_ekran.QrSonuc("hata", sonraki_s=qr_ekran.HATA_TEKRAR_S, mesaj=str(e))
-            img = qr_ekran.qr_resmi(sonuc.jeton, self._qr_kenar()) if sonuc.durum == "ok" else None
-            try:
-                self.kok.after(0, lambda: self._qr_uygula(sonuc, img))
-            except Exception:
-                pass
-
-        threading.Thread(target=_isci, name="tabby-qr", daemon=True).start()
-
-    def _qr_uygula(self, sonuc, img) -> None:
-        if sonuc.durum == "ok" and img is not None:
-            from PIL import ImageTk
-            self._qr_foto = ImageTk.PhotoImage(img)  # eski cizim burada silinir
-            self._qr_resim.configure(image=self._qr_foto)
-            if not self._qr_gorunur:
-                self._qr_kutu.place(relx=1.0, rely=0.0, x=-12, y=12, anchor="ne")
-                self._qr_kutu.lift()
-                self._qr_gorunur = True
-        else:
-            if sonuc.mesaj:
-                LOG.info("QR gizli (%s): %s", sonuc.durum, sonuc.mesaj)
-            self._qr_gizle()
-        self.kok.after(int(sonuc.sonraki_s * 1000), self._qr_iste)
-
-    def _qr_gizle(self) -> None:
-        if getattr(self, "_qr_gorunur", False):
-            self._qr_kutu.place_forget()
-            self._qr_resim.configure(image="")
-            self._qr_foto = None
-            self._qr_gorunur = False
-
-    def _saat_dongusu(self) -> None:
-        try:
-            simdi = datetime.now()
-            self.tarih_etiket.configure(text=simdi.strftime("%d.%m.%Y"))
-            self.gun_etiket.configure(text=TURKCE_GUNLER[simdi.weekday()])
-            self.saat_etiket.configure(text=simdi.strftime("%H:%M"))
-        except tk.TclError:
-            return
-        self._saat_zamanlayici = self.kok.after(1000, self._saat_dongusu)
-
-    def _cihaz_bilgi_metni(self) -> str:
-        b = oku_ekran_bilgisi()
-        return "cihaz: %s\nag: %s\nip: %s\nmac: %s" % (
-            b["cihaz_adi"],
-            b["baglanti_metin"],
-            b["ip"],
-            b["mac"],
-        )
-
-    def _alt_bilgi_yenile_dongusu(self) -> None:
-        try:
-            yeni = self._cihaz_bilgi_metni()
-            if yeni != self._son_alt_bilgi_metin:
-                self._son_alt_bilgi_metin = yeni
-                self._alt_bilgi_etiket.configure(text=yeni)
-        except tk.TclError:
-            return
-        self._alt_bilgi_after_id = self.kok.after(3000, self._alt_bilgi_yenile_dongusu)
+    def _yon(self, ust: tk.Misc, metin: str, renk: str) -> tk.Label:
+        return tk.Label(ust, text=metin, bg=renk, fg=BEYAZ, font=self.f_yon, padx=12, pady=6)
 
     @staticmethod
     def _imlec_gizle(widget: tk.Misc) -> None:
         try:
             widget.configure(cursor="none")
-        except tk.TclError:
-            pass
-        try:
             for c in widget.winfo_children():
                 KioskArayuz._imlec_gizle(c)
         except tk.TclError:
             pass
+
+    def _boyut_degisti(self, _evt=None) -> None:
+        w, h = self.kok.winfo_width(), self.kok.winfo_height()
+        if (w, h) == self._son_boyut or w < 120:
+            return
+        self._son_boyut = (w, h)
+        s = max(0.6, min(w / REF_W, h / REF_H))
+        self._olcek = s
+        for fnt, taban in (
+            (self.f_marka, 22), (self.f_saat, 20), (self.f_tarih, 9), (self.f_istem, 21),
+            (self.f_alt, 9), (self.f_rozet, 10), (self.f_yon, 13), (self.f_qr, 9),
+            (self.f_durum, 8), (self.f_bekleme_marka, 30), (self.f_bekleme_qr, 12),
+        ):
+            fnt.configure(size=max(7, int(round(taban * s))))
+        sol_w = int(w - self.qr_kenar() - 50 * s) if self._qr_gorunur else int(w - 30 * s)
+        for lbl in (self.istem, self.istem_alt):
+            lbl.configure(wraplength=max(120, sol_w))
+        if self._qr_jeton:
+            self._qr_ciz(self._qr_jeton)
+
+    def qr_kenar(self) -> int:
+        return int(108 * self._olcek)
+
+    def bekleme_qr_kenar(self) -> int:
+        return int(170 * self._olcek)
+
+    # ---------- saat / bilgi ----------
+    def _saat_dongusu(self) -> None:
+        try:
+            n = datetime.now()
+            self.saat_etiket.configure(text=n.strftime("%H:%M"))
+            self.tarih_etiket.configure(text="%s %s" % (n.strftime("%d.%m.%Y"), TURKCE_GUNLER[n.weekday()]))
+        except tk.TclError:
+            return
+        self.kok.after(1000, self._saat_dongusu)
+
+    def _bilgi_dongusu(self) -> None:
+        try:
+            b = oku_ekran_bilgisi()
+            self.bilgi_etiket.configure(text="%s  ·  %s  ·  %s" % (b["cihaz_adi"], b["baglanti_metin"], b["ip"]))
+        except Exception:
+            pass
+        self.kok.after(3000, self._bilgi_dongusu)
+
+    # ---------- okuyucu durum ----------
+    def _port_ciz(self) -> None:
+        for port, (cv, _ad) in self._port_noktalari.items():
+            try:
+                cv.delete("all")
+                renk = "#22c55e" if port in self._bagli_portlar else "#6b7280"
+                cv.create_oval(1, 1, 9, 9, fill=renk, outline="")
+            except tk.TclError:
+                pass
+
+    @staticmethod
+    def _metinden_port_bul(metin: str) -> Optional[int]:
+        m = re.search(r"\b(?:usb|port)\s*([0-9]+)\b", metin or "", flags=re.IGNORECASE)
+        return int(m.group(1)) if m else None
+
+    def bagli_okuyuculari_guncelle(self, aygitlar: Iterable[Any]) -> None:
+        portlar: set[int] = set()
+        for a in aygitlar:
+            p = getattr(a, "usb_port", None)
+            if not isinstance(p, int):
+                p = self._metinden_port_bul(str(a))
+            if isinstance(p, int):
+                portlar.add(p)
+        self._bagli_portlar = portlar
+        self._port_ciz()
+
+    # ---------- mesaj durumlari ----------
+    def _goster(self, metin: str, alt: str = "", rozet: str = "", rozet_renk: str = INDIGO,
+                renk: str = BEYAZ, yonler: bool = False) -> None:
+        self.bekleme_modundan_cik(hazira_don=False)
+        try:
+            self.rozet.pack_forget()
+            if rozet:
+                self.rozet.configure(text=rozet, bg=rozet_renk)
+                self.rozet.pack(anchor=tk.W, pady=(0, 4), before=self.istem)
+            self.istem.configure(text=metin, fg=renk)
+            self.istem_alt.configure(text=alt)
+            if yonler:
+                self.yonler.pack(fill=tk.X, anchor=tk.W)
+            else:
+                self.yonler.pack_forget()
+        except tk.TclError:
+            pass
+
+    def hazir_ekrana_gec(self) -> None:
+        self._goster(METIN_ISTEM, METIN_ISTEM_ALT, yonler=True)
+
+    def islem_bekleniyor_goster(self, is_giris: bool) -> None:
+        self._goster("Bilgileriniz sorgulanıyor…", "Lütfen bekleyin",
+                     rozet="GİRİŞ" if is_giris else "ÇIKIŞ", rozet_renk=YESIL if is_giris else KIRMIZI)
+
+    def islem_basarili_goster(self, ad_soyad: str, saat: str, is_giris: bool) -> None:
+        ad = (ad_soyad or "").strip() or "Personel"
+        islem_saati = (saat or "").strip() or datetime.now().strftime("%H:%M")
+        etiket = "Giriş" if is_giris else "Çıkış"
+        self._goster("Sn %s" % ad, "%s kaydınız %s ile kaydedilmiştir." % (etiket, islem_saati),
+                     rozet="✓ %s" % etiket.upper(), rozet_renk=YESIL if is_giris else KIRMIZI)
+
+    def merkez_hata_goster(self, metin: str) -> None:
+        self._goster(metin, rozet="UYARI", rozet_renk=SARI, renk=BEYAZ)
+
+    def sunucu_mesaji_goster(self, metin: str) -> None:
+        self._goster(metin, rozet="BİLGİ", rozet_renk=INDIGO)
+
+    def uyari_metni(self, metin: str) -> None:
+        self.merkez_hata_goster(metin)
 
     def _iptal_son_okuma_zamanlayici(self) -> None:
         if self._son_okuma_after_id is not None:
@@ -583,202 +322,104 @@ class KioskArayuz:
                 pass
             self._son_okuma_after_id = None
 
-    def _boyut_degisti(self, _evt=None) -> None:
-        w = self.kok.winfo_width()
-        h = self.kok.winfo_height()
-        if w == self._son_genislik and h == self._son_yukseklik:
+    def son_okumayi_guncelle(self, okuyucu_kisa: str, kart_numarasi: str) -> None:
+        self._iptal_son_okuma_zamanlayici()
+        self._goster("%s: %s" % (METIN_KART_ETIKET, kart_numarasi),
+                     "%s: %s" % (METIN_OKUYUCU_ETIKET, okuyucu_kisa), rozet="OKUNDU")
+        ms = int(max(SON_OKUMA_GOSTERIM_SANIYE, 0.5) * 1000)
+        self._son_okuma_after_id = self.kok.after(ms, self.hazir_ekrana_gec)
+
+    # ---------- bekleme modu ----------
+    def bekleme_moduna_gec(self) -> None:
+        if self._bekleme:
             return
-        self._son_genislik = w
-        self._son_yukseklik = h
-        if w < 120:
+        self._bekleme = True
+        self._bekleme_qr_guncelle()
+        self.bekleme.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self.bekleme.lift()
+
+    def bekleme_modundan_cik(self, hazira_don: bool = True) -> None:
+        if not self._bekleme:
             return
-        try:
-            oran_w = max(w / KIOSK_REF_GENISLIK, 0.42)
-            oran_h = max(h / KIOSK_REF_YUKSEKLIK, 0.42)
-            oran = min(oran_w, oran_h) * KIOSK_FONT_CARPAN
-            if hasattr(self, "_marka_font"):
-                self._marka_font.configure(
-                    size=max(10, int(FONT_MARKA * min(oran, 1.05)))
-                )
-            self._baslik_font.configure(
-                size=max(14, int(FONT_ANA_BUYUK * min(oran, 1.15)))
-            )
-            self._tarih_font.configure(size=max(11, int(FONT_TARIH * oran)))
-            self._gun_font.configure(size=max(11, int(FONT_GUN * oran)))
-            self._saat_font.configure(
-                size=max(22, int(FONT_SAAT * min(oran, 1.2)))
-            )
-            self._orta_okuyucu_font.configure(
-                size=max(12, int(FONT_ORTA_OKUYUCU * min(oran, 1.12)))
-            )
-            self._kart_font.configure(
-                size=max(16, int(FONT_KART * min(oran, 1.18)))
-            )
-            self._alt_kart_font.configure(
-                size=max(10, int(FONT_ALT_KART * min(oran, 1.05)))
-            )
-            self._durum_font.configure(size=max(8, int(FONT_DURUM * oran)))
-            self._alt_bilgi_font.configure(size=max(7, int(FONT_DURUM * min(oran, 0.95))))
-            metin_w = max(120, int(w * 0.98) - (KIOSK_DIS_PADX * 2))
-            self.baslik_etiket.configure(wraplength=metin_w)
-            self.tarih_etiket.configure(wraplength=metin_w)
-            self.gun_etiket.configure(wraplength=metin_w)
-            self.saat_etiket.configure(wraplength=metin_w)
-            self.orta_okuyucu_etiket.configure(wraplength=metin_w)
-            self.kart_etiket.configure(wraplength=metin_w)
-        except tk.TclError:
-            pass
+        self._bekleme = False
+        self.bekleme.place_forget()
+        if hazira_don:
+            self.hazir_ekrana_gec()
 
-    def _usb_durum_gostergesi_olustur(self) -> None:
-        self._usb_port_noktalari: dict[int, tk.Canvas] = {}
-        port_etiketleri = {GIRIS_USB_PORT: "GKO", CIKIS_USB_PORT: "CKO"}
-        for port in (GIRIS_USB_PORT, CIKIS_USB_PORT):
-            item = tk.Frame(self.bagli_etiket, bg=self._alt_bolum_bg)
-            item.pack(side=tk.LEFT, padx=(0, 14))
-            nokta = tk.Canvas(
-                item,
-                width=14,
-                height=14,
-                bg=self._alt_bolum_bg,
-                highlightthickness=0,
-                bd=0,
-            )
-            nokta.pack(side=tk.LEFT)
-            tk.Label(
-                item,
-                text=port_etiketleri.get(port, "USB %s" % port),
-                bg=self._alt_bolum_bg,
-                fg=RENK_METIN_KOYU,
-                font=self._durum_font,
-            ).pack(side=tk.LEFT, padx=(6, 0))
-            self._usb_port_noktalari[port] = nokta
+    def bekleme_modunda_mi(self) -> bool:
+        return self._bekleme
 
-        self._usb_port_gostergesini_guncelle(set())
+    def _bekleme_qr_guncelle(self) -> None:
+        if self._qr_gorunur and self._qr_bekleme_foto is not None:
+            self.b_qr_resim.configure(image=self._qr_bekleme_foto)
+            self.b_istem.pack_forget()
+            self.b_qr_kutu.pack(before=self.b_yazi)
+            self.b_yazi.pack(pady=(6, 0))
+        else:
+            self.b_qr_kutu.pack_forget()
+            self.b_yazi.pack_forget()
+            self.b_istem.pack(pady=(10, 0))
 
-    @staticmethod
-    def _metinden_port_bul(metin: str) -> Optional[int]:
-        if not metin:
-            return None
-        m = re.search(r"\b(?:usb|port)\s*([0-9]+)\b", metin, flags=re.IGNORECASE)
-        if not m:
-            return None
-        return int(m.group(1))
+    # ---------- QR (DEVICE_SPEC 5) ----------
+    def qr_paneli_baslat(self, taban_getir) -> None:
+        """taban_getir() -> 'https://sunucu:port'. QR 403/401'de gizli kalir."""
+        self._qr_taban_getir = taban_getir
+        self._qr_iste()
 
-    def _usb_port_gostergesini_guncelle(self, bagli_portlar: set[int]) -> None:
-        for port, nokta in self._usb_port_noktalari.items():
-            renk = RENK_METIN_KOYU if port in bagli_portlar else RENK_ARKA
+    def _qr_iste(self) -> None:
+        def _isci() -> None:
+            import qr_ekran
+
             try:
-                nokta.delete("all")
-                nokta.create_oval(2, 2, 12, 12, fill=renk, outline=RENK_METIN_KOYU)
-            except tk.TclError:
+                sonuc = qr_ekran.jeton_iste(self._qr_taban_getir() or "")
+            except Exception as e:  # pragma: no cover
+                sonuc = qr_ekran.QrSonuc("hata", sonraki_s=qr_ekran.HATA_TEKRAR_S, mesaj=str(e))
+            try:
+                self.kok.after(0, lambda: self._qr_uygula(sonuc))
+            except Exception:
                 pass
 
-    def bagli_okuyuculari_guncelle(self, aygitlar: Iterable[Any]) -> None:
-        bagli_portlar: set[int] = set()
-        for aygit in aygitlar:
-            port = getattr(aygit, "usb_port", None)
-            if isinstance(port, int):
-                bagli_portlar.add(port)
-                continue
-            # Eski/harici cagrilar icin metinden yakalamaya calis
-            port = self._metinden_port_bul(str(aygit))
-            if isinstance(port, int):
-                bagli_portlar.add(port)
-        self._usb_port_gostergesini_guncelle(bagli_portlar)
+        threading.Thread(target=_isci, name="tabby-qr", daemon=True).start()
 
-    def _merkez_mesaj_goster(
-        self,
-        ust_metin: str,
-        alt_metin: str = "",
-        *,
-        renk: str = RENK_METIN_KOYU,
-        tarih_goster: bool = True,
-        ust_pady: Optional[tuple[int, int]] = None,
-    ) -> None:
-        try:
-            self.baslik_etiket.configure(text=ust_metin, fg=renk)
-            self.baslik_etiket.pack_configure(
-                pady=ust_pady or (KIOSK_BASLIK_PADY1, KIOSK_BASLIK_PADY2)
-            )
-            if tarih_goster:
-                self.tarih_saat_kutu.pack(fill=tk.X)
-            else:
-                self.tarih_saat_kutu.pack_forget()
-            self.orta_okuyucu_etiket.pack_forget()
-            self.kart_etiket.pack_forget()
-            if alt_metin:
-                self.orta_okuyucu_etiket.configure(text=alt_metin, fg=renk)
-                self.orta_okuyucu_etiket.pack(fill=tk.X, padx=(2, 2), pady=(6, 0))
-            self.son_okuyucu_etiket.configure(text="")
-            self.son_kart_etiket.configure(text="")
-        except tk.TclError:
-            pass
+    def _qr_ciz(self, jeton: str) -> bool:
+        import qr_ekran
 
-    def hazir_ekrana_gec(self) -> None:
-        self._merkez_mesaj_goster(
-            METIN_HAZIR,
-            renk=RENK_METIN_KOYU,
-            tarih_goster=True,
-        )
+        img = qr_ekran.qr_resmi(jeton, self.qr_kenar())
+        bimg = qr_ekran.qr_resmi(jeton, self.bekleme_qr_kenar())
+        if img is None or bimg is None:
+            return False
+        from PIL import ImageTk
 
-    def islem_bekleniyor_goster(self, is_giris: bool) -> None:
-        self._merkez_mesaj_goster(
-            "BILGILERINIZ SORGULANIYOR",
-            renk=RENK_METIN_KOYU,
-            tarih_goster=False,
-            ust_pady=(8, 4),
-        )
+        self._qr_foto = ImageTk.PhotoImage(img)  # eski cizim burada birakilir
+        self._qr_bekleme_foto = ImageTk.PhotoImage(bimg)
+        self.qr_resim.configure(image=self._qr_foto)
+        if self._bekleme:
+            self.b_qr_resim.configure(image=self._qr_bekleme_foto)
+        return True
 
-    def islem_basarili_goster(self, ad_soyad: str, saat: str, is_giris: bool) -> None:
-        ad = (ad_soyad or "").strip() or "Personel"
-        islem_saati = (saat or "").strip() or datetime.now().strftime("%H:%M")
-        etiket = "Giriş" if is_giris else "Çıkış"
-        metin = "Sn %s %s Kaydınız %s ile kaydedilmiştir." % (ad, etiket, islem_saati)
-        self._merkez_mesaj_goster(
-            metin,
-            renk=RENK_METIN_KOYU,
-            tarih_goster=False,
-            ust_pady=(8, 4),
-        )
+    def _qr_uygula(self, sonuc) -> None:
+        if sonuc.durum == "ok" and self._qr_ciz(sonuc.jeton):
+            self._qr_jeton = sonuc.jeton
+            if not self._qr_gorunur:
+                self._qr_gorunur = True
+                self.qr_kart.grid(row=0, column=1, sticky="e", padx=(0, 12), pady=8)
+                self._son_boyut = (0, 0)
+                self._boyut_degisti()
+        else:
+            if sonuc.mesaj:
+                LOG.info("QR gizli (%s): %s", sonuc.durum, sonuc.mesaj)
+            self._qr_gizle()
+        if self._bekleme:
+            self._bekleme_qr_guncelle()
+        self.kok.after(int(sonuc.sonraki_s * 1000), self._qr_iste)
 
-    def merkez_hata_goster(self, metin: str) -> None:
-        self._merkez_mesaj_goster(
-            metin,
-            renk=RENK_UYARI,
-            tarih_goster=False,
-            ust_pady=(8, 4),
-        )
-
-    def sunucu_mesaji_goster(self, metin: str) -> None:
-        self._merkez_mesaj_goster(
-            metin,
-            renk=RENK_METIN_KOYU,
-            tarih_goster=False,
-            ust_pady=(8, 4),
-        )
-
-    def _bekleme_ekranina_don(self) -> None:
-        self._son_okuma_after_id = None
-        self.hazir_ekrana_gec()
-
-    def son_okumayi_guncelle(
-        self, okuyucu_kisa: str, kart_numarasi: str
-    ) -> None:
-        self._iptal_son_okuma_zamanlayici()
-        metin = "%s: %s\n%s: %s" % (
-            METIN_OKUYUCU_ETIKET,
-            okuyucu_kisa,
-            METIN_KART_ETIKET,
-            kart_numarasi,
-        )
-        self._merkez_mesaj_goster(
-            metin,
-            renk=BOOTSTRAP_PRIMARY,
-            tarih_goster=False,
-            ust_pady=(8, 4),
-        )
-        ms = int(max(SON_OKUMA_GOSTERIM_SANIYE, 0.5) * 1000)
-        self._son_okuma_after_id = self.kok.after(ms, self._bekleme_ekranina_don)
-
-    def uyari_metni(self, metin: str) -> None:
-        self.merkez_hata_goster(metin)
+    def _qr_gizle(self) -> None:
+        if self._qr_gorunur:
+            self.qr_kart.grid_forget()
+            self.qr_resim.configure(image="")
+            self._qr_foto = None
+            self._qr_bekleme_foto = None
+            self._qr_jeton = ""
+            self._qr_gorunur = False
+            self._son_boyut = (0, 0)
+            self._boyut_degisti()

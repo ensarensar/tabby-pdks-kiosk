@@ -282,6 +282,17 @@ def main() -> None:
     aktif_hata_metni = ""
     asama_after_id: Optional[str] = None
     hazir_after_id: Optional[str] = None
+    def _bekleme_video_aktif() -> bool:
+        ortam = os.environ.get("TABBY_BEKLEME_VIDEO", "").strip().lower()
+        if ortam:
+            return ortam in ("1", "true", "evet", "on")
+        try:
+            from config_store import oku_config
+
+            return bool(oku_config().get("bekleme_video_aktif", False) is True)
+        except Exception:
+            return False
+
     bekleme_video_after_id: Optional[str] = None
     bekleme_video = BeklemeVideoOynatici()
     mesaj_gosterime_kadar = 0.0
@@ -429,6 +440,7 @@ def main() -> None:
         _bekleme_video_timer_iptal()
         if bekleme_video.acik_mi() or bekleme_video.calisiyor_mu():
             bekleme_video.durdur()
+        uygulama.bekleme_modundan_cik()
         _kiosk_one_getir()
 
     def _bekleme_video_baslat() -> None:
@@ -439,6 +451,10 @@ def main() -> None:
             return
         if _hata_metni_uret() and not _okuyucu_hata_metni_uret():
             _bekleme_video_zamanla()
+            return
+        if not _bekleme_video_aktif():
+            # v1.5.0: video yerine bekleme ekrani (yalniz QR + tabby)
+            uygulama.bekleme_moduna_gec()
             return
         try:
             arayuz_kok.attributes("-topmost", False)
