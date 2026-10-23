@@ -2,6 +2,7 @@
 """Online/offline kart okuma akisi."""
 from __future__ import annotations
 
+import cihaz_kimlik
 import json
 import logging
 from datetime import datetime
@@ -46,7 +47,7 @@ def _sunucuya_gonder(payload: Dict[str, Any]) -> Tuple[bool, str, bool, str, str
     req = urlrequest.Request(
         ayar.servis_url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers=cihaz_kimlik.basliklara_ekle({"Content-Type": "application/json"}),
         method="POST",
     )
     try:

@@ -30,7 +30,7 @@ _log "APT paketleri kuruluyor..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq \
-  python3 python3-pip python3-tk python3-pil \
+  python3 python3-pip python3-tk python3-pil python3-pil.imagetk python3-qrcode \
   network-manager \
   rsync curl wget \
   x11-xserver-utils \

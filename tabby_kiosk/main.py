@@ -10,6 +10,7 @@ import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
 import logging
+import logging.handlers
 import os
 import queue
 import socket
@@ -57,7 +58,11 @@ def _log_yapilandir() -> None:
     if log_dosyasi:
         try:
             os.makedirs(os.path.dirname(log_dosyasi), exist_ok=True)
-            handlers.append(logging.FileHandler(log_dosyasi, encoding="utf-8"))
+            handlers.append(
+                logging.handlers.RotatingFileHandler(
+                    log_dosyasi, maxBytes=10 * 1024 * 1024, backupCount=3, encoding="utf-8"
+                )
+            )
         except Exception:
             pass
     logging.basicConfig(
@@ -255,6 +260,14 @@ def main() -> None:
         LOG.error("Tk baslatilamadi: %s", e)
         sys.exit(1)
 
+    if os.environ.get("TABBY_QR_EKRAN", "1") not in ("0", "false", "hayir"):
+        try:
+            from personel_sync import _servis_tabani
+
+            uygulama.qr_paneli_baslat(_servis_tabani)
+        except Exception as e:
+            LOG.warning("QR paneli baslatilamadi: %s", e)
+
     izleyici = OkuyucuIzleyici(sonuc_kuyrugu)
     udev_dur = threading.Event()
     mesaj_kilit_s = ISLEM_MESAJ_GOSTERIM_SANIYE
@@ -269,6 +282,17 @@ def main() -> None:
     aktif_hata_metni = ""
     asama_after_id: Optional[str] = None
     hazir_after_id: Optional[str] = None
+    def _bekleme_video_aktif() -> bool:
+        ortam = os.environ.get("TABBY_BEKLEME_VIDEO", "").strip().lower()
+        if ortam:
+            return ortam in ("1", "true", "evet", "on")
+        try:
+            from config_store import oku_config
+
+            return bool(oku_config().get("bekleme_video_aktif", False) is True)
+        except Exception:
+            return False
+
     bekleme_video_after_id: Optional[str] = None
     bekleme_video = BeklemeVideoOynatici()
     mesaj_gosterime_kadar = 0.0
@@ -416,6 +440,7 @@ def main() -> None:
         _bekleme_video_timer_iptal()
         if bekleme_video.acik_mi() or bekleme_video.calisiyor_mu():
             bekleme_video.durdur()
+        uygulama.bekleme_modundan_cik()
         _kiosk_one_getir()
 
     def _bekleme_video_baslat() -> None:
@@ -426,6 +451,10 @@ def main() -> None:
             return
         if _hata_metni_uret() and not _okuyucu_hata_metni_uret():
             _bekleme_video_zamanla()
+            return
+        if not _bekleme_video_aktif():
+            # v1.5.0: video yerine bekleme ekrani (yalniz QR + tabby)
+            uygulama.bekleme_moduna_gec()
             return
         try:
             arayuz_kok.attributes("-topmost", False)
@@ -557,6 +586,9 @@ def main() -> None:
                 return
 
             if bekleme_video.acik_mi():
+                return
+            # v1.5.1: periyodik tarama bekleme ekranini (QR + tabby) kapatmasin
+            if not aktif_hata_metni and uygulama.bekleme_modunda_mi():
                 return
             if aktif_hata_metni:
                 uygulama.merkez_hata_goster(aktif_hata_metni)
